@@ -1,123 +1,108 @@
 #! /usr/bin/python
 # -*- coding:utf-8 -*-
 
-import parser
-import Tkinter
-import tkMessageBox
-import algo
-import Image, ImageDraw
-import sys
-import time
 
-class my_interface(Tkinter.Tk):
+class Astar:
 
-	HEIGHT = 600
-	WIDTH = 600
+    """ Main class implemented the A* algorithm """
 
-	def __init__(self, parent, init_map):
-		Tkinter.Tk.__init__(self, parent)
-		self.parent = parent
-		self.init_interface()
-		self.circle_size = 0
-		self.init_map = init_map
-		self.map_height = init_map.shape[1]
-		self.map_width = init_map.shape[0]
-		self.diameter = min(self.WIDTH/(2*self.map_width), self.HEIGHT/(2*self.map_height))
-		self.radius = self.diameter/2
+    def __init__(self, start_node, end_node, heuristic_function, generate_sucessors_function):
+        """
+        Initialisation of the Astar algorithm :
+            start_node the node S0
+            end_node the goal node
+            heuristic_function the heuristic of the problem
+            generate_sucessors_function a function which from a given node generate all the possible successors
+        """
+        self.node_created = {}
+        # Creation of the start and end node
+        self.start_node = start_node
+        self.end_node = end_node
+        # Value of f computed for the start node
+        self.heuristic = heuristic_function
+        self.generate_sucessors = generate_sucessors_function
 
-	def init_interface(self):
-		self.grid()
-		self.drawing_surface = Tkinter.Canvas(self, width=self.WIDTH, height=self.HEIGHT, background='white')
-		self.drawing_surface.grid(column=1,row=0, rowspan=20)
-		node_count_label = Tkinter.Label(self, text="Number of nodes :")
-		self.node_count_area = Tkinter.StringVar()
-		node_count_area_label = Tkinter.Label(self, textvariable=self.node_count_area)
-		self.display_node_created(0)
+    def compare_f(self, node1, node2):
+        """ Used to compare the f value of two nodes """
+        if node1.f > node2.f:
+            return -1
+        elif node1.f < node2.f:
+            return 1
+        else:
+            return 0
 
-		button_bf = Tkinter.Button(self,text=u"Best First", command=self.BEF_click)
-		button_df = Tkinter.Button(self,text=u"Depth First", command=self.DF_click)
-		button_hf = Tkinter.Button(self,text=u"Breadth First", command=self.BRF_click)
+    def best_first_list_management(self, open_list, item):
+        open_list.insert(0, item)
+        open_list.sort(cmp=self.compare_f)
 
-		button_bf.grid(column=0,row=0)
-		button_df.grid(column=0,row=1)
-		button_hf.grid(column=0,row=2)
-		node_count_label.grid(column=0, row=4)
-		node_count_area_label.grid(column=0,row=5)
+    def breadth_first_list_management(self, open_list, item):
+        open_list.insert(0, item)
 
-	def display_node_created(self, number_node):
-		self.node_count_area.set(number_node)
+    def depth_first_list_management(self, open_list, item):
+        open_list.insert(len(open_list), item)
 
-	def treat_solution(self, solution):
-		""" Handle the return of the solve function """
-		if solution:
-			self.print_solution(solution[0])
-			self.display_node_created(solution[1])
-		else:
-			tkMessageBox.showinfo("Warning", "Impossible to find a path")
+    def solve(self, list_management_function, display_function):
+        """
+        This function implement the Astar algorithm.
+        The list management function is the way the OPEN list will be managed.
+        It allow to use the same structure to implement best-first, depth-first ...
+        The display function if the function used to display the current solution
+        """
+        closed_list = []
+        open_list = []
+        initial_node = self.start_node
+        open_list.append(initial_node)
+        while True:
+            # If the open list is empty
+            if not open_list:
+                print "No Solution"
+                return
+            current = open_list.pop()
+            display_function(self.get_path(current))
+            closed_list.append(current)
+            if current == self.end_node:
+                print "Solution Found"
+                return (self.get_path(current), len(open_list) + len(closed_list), current.f)
+            succ_list = self.generate_sucessors(current)
+            for succ_node in succ_list:
+                fetched_from = None
+                child_node = succ_node
+                if succ_node in open_list:
+                    fetched_from = open_list
+                elif succ_node in closed_list:
+                    fetched_from = closed_list
+                if fetched_from:
+                    index = fetched_from.index(succ_node)
+                    child_node = fetched_from[index]
+                current.add_child(child_node)
+                if fetched_from is None:
+                    self.attach_and_eval(current, child_node)
+                    list_management_function(open_list, child_node)
+                elif current.g + self.heuristic(current, child_node) < child_node.g:
+                    self.attach_and_eval(current, child_node)
+                    if child_node in closed_list:
+                        self.propagate_path_improvements(child_node)
 
+    def get_path(self, node):
+        """ Create the best path to the position (node.x, node.y) """
+        return_list = []
+        while node != self.start_node:
+            return_list.append([node.position_x, node.position_y])
+            node = node.parent
+        return return_list
 
-	def BEF_click(self):
-		""" Called when the Best First button is clicked """
-		print "Best first"
-		solution = astar.solve(astar.best_first_list_management, self.display_path)
-		self.treat_solution(solution)
-		
+    def attach_and_eval(self, parent, child):
+        """ The attach_and_eval function """
+        child.parent = parent
+        child.g = parent.g + self.heuristic(parent, child)
+        child.f = child.g + self.heuristic(child, self.end_node)
 
-	def DF_click(self):
-		""" Called when the Depth First button is clicked """
-		print "Depth first"
-		solution = astar.solve(astar.depth_first_list_management, self.display_path)
-		self.treat_solution(solution)
-
-	def BRF_click(self):
-		""" Called when the Breadth First button is clicked """
-		print "Breadth first"
-		solution = astar.solve(astar.breadth_first_list_management, self.display_path)
-		self.treat_solution(solution)
-
-	def display_path(self, path):
-		""" Print the path given in argument on the screen """
-		self.drawing_surface.delete("all")
-		self.print_map()
-		self.print_solution(path)
-		self.update()
-
-	def print_map(self):
-		""" Print node on by one with the selection of the color """
-		for i in range(0,self.map_width):
-			for j in range(0,self.map_height):
-				color = 'blue'
-				if self.init_map[i][j] == 0:
-					color = 'white'
-				elif self.init_map[i][j] == 1:
-					color = 'green'
-				elif self.init_map[i][j] == 2:
-					color = 'red'
-				self.place_node(i,j,color)
-
-	def print_solution(self, solution):
-		""" Color in red the node used by the solution """
-		for point in solution:
-			i = point[0]
-			j = point[1]
-			self.place_node(i,j,'red')
-
-	def place_node(self, i, j, color):
-		""" Choose the right position for the node """
-		self.create_circle(self.radius+(2*i*self.diameter+self.radius),self.WIDTH -(self.radius+2*j*self.diameter+self.radius),self.radius, fill=color)
-
-	def create_circle(self, x, y, r, **kwargs):
-		""" Print a circle on the screen """
-		return self.drawing_surface.create_oval(x-r,y-r, x+r,y+r, **kwargs)
-
-
-if __name__ == "__main__":
-	input_file = sys.argv[1]
-	parser_instance = parser.Parser(input_file)
-	init_map = parser_instance.parse()
-	app = my_interface(None, init_map)
-	app.title('A*')
-	astar = algo.Algo(init_map, parser_instance.start, parser_instance.end)
-	app.print_map()
-	app.mainloop()
-
+    def propagate_path_improvements(self, node):
+        """ The propagate_path_improvements function """
+        for child in node.children:
+            if node.g + self.heuristic(node, child) < child.g:
+                child.parent = node
+                child.g = node.g + self.heuristic(node, child)
+                child.f = child.g + \
+                    self.heuristic(child, self.end_node)
+                self.propagate_path_improvements(child)
